@@ -1085,131 +1085,86 @@
 
 
 <script>
-// Enhanced Client-Side Proxy Detection
-document.addEventListener('DOMContentLoaded', function() {
-    // Check for proxy indicators
-    const isUsingProxy = checkForProxy();
-    
-    if (isUsingProxy) {
-        showProxyWarning();
-    }
-});
-
-function checkForProxy() {
-    // 1. Check for Tor browser
-    if (navigator.userAgent.includes('Tor') || navigator.userAgent.includes('Onion')) {
-        return true;
-    }
-
-    // 2. Check WebRTC IP leak (common with proxies/VPNs)
-    if (detectWebRTCLeak()) {
-        return true;
-    }
-
-    // 3. Check for common proxy headers (that might be exposed to JS)
+// Function to detect proxy usage
+function detectProxy() {
+    // Check for common proxy headers
     const proxyHeaders = [
-        'via',
-        'x-forwarded-for',
-        'forwarded',
-        'client-ip',
-        'proxy-connection'
+        'HTTP_VIA',
+        'HTTP_X_FORWARDED_FOR',
+        'HTTP_FORWARDED_FOR',
+        'HTTP_X_FORWARDED',
+        'HTTP_FORWARDED',
+        'HTTP_CLIENT_IP',
+        'HTTP_FORWARDED_FOR_IP',
+        'VIA',
+        'X_FORWARDED_FOR',
+        'FORWARDED_FOR',
+        'X_FORWARDED',
+        'FORWARDED',
+        'CLIENT_IP',
+        'FORWARDED_FOR_IP',
+        'HTTP_PROXY_CONNECTION'
     ];
     
-    for (let header of proxyHeaders) {
-        if (header in navigator || header in window) {
-            return true;
-        }
-    }
-
-    // 4. Check for suspicious screen resolution (common with some VPNs)
-    if (screen.width < 300 || screen.height < 300 || screen.width > 5000 || screen.height > 5000) {
-        return true;
-    }
-
-    // 5. Check timezone anomalies
-    try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (!tz || tz === 'UTC' || tz.includes('Etc/')) {
-            return true;
-        }
-    } catch(e) {}
-
-    // 6. Check language anomalies
-    const languages = navigator.languages || [navigator.language];
-    if (languages.some(lang => lang.includes('en') || lang.includes('us')) && 
-        !languages.includes(navigator.language)) {
-        return true;
-    }
-
-    return false;
-}
-
-function detectWebRTCLeak() {
-    if (!window.RTCPeerConnection) return false;
+    let isUsingProxy = false;
     
-    try {
-        const rtc = new RTCPeerConnection({iceServers:[]});
-        rtc.createDataChannel('');
-        return new Promise(resolve => {
-            rtc.createOffer()
-                .then(offer => {
-                    const suspiciousPatterns = [
-                        'proxy',
-                        'vpn',
-                        'tor',
-                        'anonymous',
-                        'private',
-                        'hidden',
-                        'server'
-                    ];
-                    
-                    const sdp = offer.sdp.toLowerCase();
-                    resolve(suspiciousPatterns.some(pattern => sdp.includes(pattern)));
-                })
-                .catch(() => resolve(false));
-        });
-    } catch(e) {
-        return Promise.resolve(false);
+    // Check if any proxy header exists
+    for (let header of proxyHeaders) {
+        if (header in window.navigator || header in document) {
+            isUsingProxy = true;
+            break;
+        }
+    }
+    
+    // Additional check for common proxy IP patterns
+    if (!isUsingProxy && window.RTCPeerConnection) {
+        try {
+            const rtc = new RTCPeerConnection({iceServers:[]});
+            rtc.createDataChannel('');
+            rtc.createOffer().then(offer => {
+                if (offer.sdp.includes('proxy') || offer.sdp.includes('via')) {
+                    isUsingProxy = true;
+                    showProxyMessage();
+                }
+            });
+        } catch(e) {}
+    }
+    
+    // Check the IP if available (this would require server-side implementation)
+    // For client-side only, we rely on headers
+    
+    if (isUsingProxy) {
+        showProxyMessage();
     }
 }
 
-function showProxyWarning() {
-    // Create warning element
-    const warningDiv = document.createElement('div');
-    warningDiv.id = 'proxy-warning';
-    warningDiv.style.position = 'fixed';
-    warningDiv.style.bottom = '20px';
-    warningDiv.style.right = '20px';
-    warningDiv.style.maxWidth = '350px';
-    warningDiv.style.padding = '15px';
-    warningDiv.style.backgroundColor = '#fff3f3';
-    warningDiv.style.border = '1px solid #ff9999';
-    warningDiv.style.borderRadius = '5px';
-    warningDiv.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    warningDiv.style.zIndex = '99999';
-    warningDiv.style.fontFamily = 'Arial, sans-serif';
-    warningDiv.style.color = '#333';
-
-    // Warning content
-    warningDiv.innerHTML = `
-        <h3 style="margin:0 0 10px 0;color:#d33;">Proxy/VPN Detected</h3>
-        <p style="margin:0 0 15px 0;">Our system detected you might be using a proxy or VPN service.</p>
-        <div style="display:flex;justify-content:flex-end;">
-            <button onclick="this.parentNode.parentNode.style.display='none'" 
-                    style="padding:5px 15px;background:#d33;color:white;border:none;border-radius:3px;cursor:pointer;">
-                Close
-            </button>
-        </div>
+// Function to show the proxy message
+function showProxyMessage() {
+    const popup = document.createElement('div');
+    popup.style.position = 'fixed';
+    popup.style.top = '0';
+    popup.style.left = '0';
+    popup.style.width = '100%';
+    popup.style.backgroundColor = '#ffcccc';
+    popup.style.padding = '15px';
+    popup.style.textAlign = 'center';
+    popup.style.zIndex = '9999';
+    popup.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+    
+    popup.innerHTML = `
+        <p>You appear to be using a proxy or VPN. Please disable it to continue using this website.</p>
+        <button onclick="this.parentNode.style.display='none'" 
+                style="padding:5px 10px; background:#ff6666; color:white; border:none; border-radius:3px; cursor:pointer;">
+            Close
+        </button>
     `;
-
-    // Add to document
-    document.body.appendChild(warningDiv);
+    
+    document.body.appendChild(popup);
 }
+
+// Run the detection when the page loads
+window.onload = detectProxy;
 </script>
-
-
-
-
 
 
 
